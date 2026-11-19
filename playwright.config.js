@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test';
+export default defineConfig({testDir:'./tests/browser',timeout:35000,fullyParallel:false,workers:1,reporter:'line',outputDir:process.env.SITEPILOT_QA_DIR||'../sitepilot-qa/test-results',use:{baseURL:'http://127.0.0.1:47831',channel:'chrome',headless:true,viewport:{width:1536,height:1024},screenshot:'only-on-failure'},webServer:{command:'node server.mjs',url:'http://127.0.0.1:47831/api/health',reuseExistingServer:true,timeout:15000}});

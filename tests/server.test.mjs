@@ -1,0 +1,13 @@
+import {test,before,after} from 'node:test';
+import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import {setTimeout as pause} from 'node:timers/promises';
+import {request} from 'node:http';
+let child;const origin='http://127.0.0.1:47833';
+before(async()=>{child=spawn(process.execPath,['server.mjs'],{env:{...process.env,SITEPILOT_PORT:'47833'},stdio:'pipe',windowsHide:true});for(let i=0;i<40;i++){try{const r=await fetch(origin+'/api/health');if(r.ok)return;}catch{}await pause(100);}throw Error('Test server failed to start.');});
+after(()=>child?.kill());
+test('Local service exposes health and serves the production UI',async()=>{assert.equal((await (await fetch(origin+'/api/health')).json()).app,'SitePilot');const r=await fetch(origin);assert.match(await r.text(),/SitePilot/);assert.match(r.headers.get('content-type'),/text\/html/);});
+test('Host, Origin and cross-site checks block foreign requests',async()=>{for(const headers of [{Host:'evil.example'},{Origin:'https://evil.example'},{'Sec-Fetch-Site':'cross-site'}]){const status=await new Promise((resolve,reject)=>{const req=request(origin+'/api/session',{headers},res=>{res.resume();resolve(res.statusCode);});req.on('error',reject);req.end();});assert.equal(status,403,JSON.stringify(headers));}});
+test('Amap setup requires the session token and validates its payload',async()=>{assert.equal((await fetch(origin+'/api/amap-config',{method:'POST',body:'{}'})).status,403);const {token}=await (await fetch(origin+'/api/session')).json();const headers={'X-SitePilot-Token':token,'Content-Type':'application/json'};assert.equal((await fetch(origin+'/api/amap-config',{method:'POST',headers,body:'{"securityCode":"x"}'})).status,400);assert.equal((await fetch(origin+'/api/amap-config',{method:'POST',headers,body:JSON.stringify({securityCode:'TEST-CODE-ONLY'})})).status,200);});
+test('File traversal and unsupported writes cannot expose source or secrets',async()=>{assert.equal((await fetch(origin+'/server.mjs')).status,404);assert.equal((await fetch(origin+'/%2e%2e%5cserver.mjs')).status,403);assert.equal((await fetch(origin+'/',{method:'POST'})).status,405);});
+test('HEAD responses have no body',async()=>{const r=await fetch(origin,{method:'HEAD'});assert.equal(r.status,200);assert.equal(await r.text(),'');});
